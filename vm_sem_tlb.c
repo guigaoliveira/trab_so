@@ -3,12 +3,12 @@
 #include <unistd.h>
 
 #define MASK 0x00FF
-#define PAGE_SHIFT 8
-#define BUFFER_SIZE 10
-#define NUM_FRAMES 64
-#define FRAME_SIZE 64
-#define NUM_PAGES 64
-#define PAGE_SIZE 64
+#define PAGE_SHIFT 7
+#define BUFFER_SIZE 16
+#define NUM_FRAMES 1024 / 2
+#define FRAME_SIZE 128
+#define NUM_PAGES 1024 / 2
+#define PAGE_SIZE 128
 
 typedef struct
 {
@@ -17,8 +17,8 @@ typedef struct
 } page_frame_node;
 
 void init();
-int check_page_table(int page_number);
-void add_to_page_table(int page_number, int frame_number);
+int getFrameNumberByPageNumber(int page_number);
+void addToPageTable(int page_number, int frame_number);
 
 FILE *address_file;
 
@@ -32,15 +32,9 @@ signed char read_value;
 int operation_counter = 0;
 int frame_counter = 0;
 int faults = 0;
-int memory_access_counter = 0;
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
-    {
-        fprintf(stderr, "Usage: ./vm [input file]\n");
-        return -1;
-    }
 
     address_file = fopen(argv[1], "r");
 
@@ -54,48 +48,50 @@ int main(int argc, char *argv[])
 
     while (fgets(address, BUFFER_SIZE, address_file) != 0)
     {
+
         operation_counter++;
+
         logical_address = atoi(address);
 
         int page_number = logical_address >> PAGE_SHIFT;
         page_number = page_number & MASK;
         int offset = logical_address & MASK;
 
-        int frame_number = check_page_table(page_number);
-        memory_access_counter++;
+        int frame_number = getFrameNumberByPageNumber(page_number);
 
         if (frame_number == -1)
         {
+
             frame_number = frame_counter++ % NUM_PAGES;
-            add_to_page_table(page_number, frame_number);
+
+            addToPageTable(page_number, frame_number);
+
             faults++;
         }
 
         int physical_address = frame_number << 8;
         physical_address = physical_address | offset;
 
-        //get the requested value
         read_value = physical_memory[frame_number][offset];
-        memory_access_counter++;
-        // printf("Virtual address: %d Physical address: %d Value: %d\n", logical_address, physical_address, read_value);
+
+        printf("Virtual address: %d Physical address: %d Value: %d\n", logical_address, physical_address, read_value);
     }
 
-    //print summary
+    double p = (double)(operation_counter - faults) / (double)operation_counter;
     printf("Total de enderecos referenciados = %d\n", operation_counter);
-    printf("Total de paginas referencidas: %d", operation_counter);
-    printf("Total de referencias as paginas que resultaram em acertos: %d\n", operation_counter - faults);
-    printf("Total de referencias as paginas que resultaram em falhas: %d\n", faults);
-    printf("Taxa de falhas de pagina = %f\n", (double)faults / (double)operation_counter);
+    printf("Total de paginas referencidas: %d\n", operation_counter);
+    printf("Total de referencias as paginas que resultaram em acertos: %d\n",
+           operation_counter - faults);
+    printf("Total de referencias as paginas que resultaram em falhas: %d\n",
+           faults);
     printf("Total de operacoes E/S: %d\n", faults);
-
+    printf("Tempo de acesso efetivo = %f ns\n",
+           (1 - p) * 8000000 + p * 200);
     fclose(address_file);
 
     return 0;
 }
 
-/*
- * initializes the memory table, page table
- */
 void init()
 {
     int i = 0;
@@ -114,12 +110,11 @@ void init()
     }
 }
 
-/*
- * get the frame at the given page_number; returns -1 if it is not found
- */
-int check_page_table(int page_number)
+int getFrameNumberByPageNumber(int page_number)
 {
-    for (int i = 0; i < NUM_PAGES; i++)
+    int i = 0;
+
+    for (; i < NUM_PAGES; i++)
     {
         if (page_table[i].page_number == page_number)
             return page_table[i].frame_number;
@@ -128,10 +123,7 @@ int check_page_table(int page_number)
     return -1;
 }
 
-/*
- * add the map node to the page table
- */
-void add_to_page_table(int page_number, int frame_number)
+void addToPageTable(int page_number, int frame_number)
 {
     page_table[frame_number].page_number = page_number;
     page_table[frame_number].frame_number = frame_number;
